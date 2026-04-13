@@ -35,11 +35,15 @@ def interpolar_lagrange(df, coluna_busca, valor_alvo):
 st.set_page_config(page_title="Termo Lagrange - UDF", layout="wide")
 
 # SELETOR DE UNIDADE GLOBAL NA BARRA LATERAL
-st.sidebar.header("⚙️ Configurações de Unidade")
+st.sidebar.header("⚙️ Configurações")
 unidade_p = st.sidebar.radio("Unidade de Pressão:", ["bar", "Pa (Pascal)"])
 
 st.title("🚀 Assistente de Tabelas Termodinâmicas")
-st.markdown(f"**Estudante:** Luiz Felipe | **Instituição:** UDF | Unidade Atual: **{unidade_p}**")
+# MATRÍCULA REESTABELECIDA AQUI:
+st.markdown(f"""
+**Estudante:** Luiz Felipe | **Matrícula:** 29898617  
+**Instituição:** UDF | **Unidade Atual:** {unidade_p}
+""")
 
 tab1, tab2 = st.tabs(["📊 Consulta Geral (1 Variável)", "🔄 Busca Cruzada (2 Variáveis)"])
 
@@ -57,11 +61,10 @@ with tab1:
 
         if t_id in ["A4", "A5"]:
             pressoes_bar = sorted(df['p (bar)'].unique())
-            # Se for Pa, converte a lista para o usuário ver
             if unidade_p == "Pa (Pascal)":
                 pressoes_exibicao = [p * 100000 for p in pressoes_bar]
                 p_escolhida = st.selectbox("Selecione a Pressão fixa (Pa):", pressoes_exibicao, key="p1")
-                p_alvo = p_escolhida / 100000 # Converte de volta para bar para filtrar o CSV
+                p_alvo = p_escolhida / 100000
             else:
                 p_alvo = st.selectbox("Selecione a Pressão fixa (bar):", pressoes_bar, key="p1")
             
@@ -69,19 +72,15 @@ with tab1:
         
         col_busca = st.selectbox("Buscar por qual variável?", df.columns, key="c1")
         
-        # Ajuste de label se a coluna for pressão e a unidade for Pa
         label_input = f"Insira o valor de {col_busca}"
         if "p (bar)" in col_busca and unidade_p == "Pa (Pascal)":
             label_input += " (em Pa)"
             
         valor = st.number_input(label_input, format="%.4f", key="v1")
-        
-        # Converte o valor de entrada se for pressão em Pa
         valor_calculo = (valor / 100000) if ("p (bar)" in col_busca and unidade_p == "Pa (Pascal)") else valor
 
         if st.button("Interpolar Dados", key="b1"):
             res = interpolar_lagrange(df, col_busca, valor_calculo)
-            # Converte a coluna de pressão no resultado final para Pa se necessário
             if unidade_p == "Pa (Pascal)" and "p (bar)" in res.columns:
                 res["p (Pa)"] = res["p (bar)"] * 100000
             st.dataframe(res)
@@ -103,7 +102,6 @@ with tab2:
         c1, c2 = st.columns(2)
         with c1:
             v1_nome = st.selectbox("1ª Propriedade (Base):", df2.columns, key="c2_aba2")
-            # Tratamento de Pressão em Pa
             label_v1 = f"Valor de {v1_nome}"
             if "p (bar)" in v1_nome and unidade_p == "Pa (Pascal)":
                 label_v1 += " (em Pa)"
@@ -125,23 +123,21 @@ with tab2:
             bloco_final = df2[df2[v1_nome] == v1_calculo]
             
             if bloco_final.empty:
-                res2 = interpolar_lagrange(df2, v1_nome, v1_calculo) # Interpola a primeira se não for valor exato
-                if res2 is not None:
-                    # Agora interpola a segunda variável dentro do resultado da primeira
-                    res_final = interpolar_lagrange(res2, v2_nome, v2_calculo)
-                else: res_final = None
+                res_temp = interpolar_lagrange(df2, v1_nome, v1_calculo)
+                res_final = interpolar_lagrange(res_temp, v2_nome, v2_calculo) if res_temp is not None else None
             else:
                 res_final = interpolar_lagrange(bloco_final, v2_nome, v2_calculo)
 
             if res_final is not None:
                 if unidade_p == "Pa (Pascal)" and "p (bar)" in res_final.columns:
                     res_final["p (Pa)"] = res_final["p (bar)"] * 100000
+                st.success("Estado Encontrado!")
                 st.dataframe(res_final)
             else:
-                st.error("Não foi possível interpolar com esses valores.")
+                st.error("Não foi possível interpolar. Verifique se os valores estão dentro da faixa da tabela.")
                 
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
 
 st.divider()
-st.caption("UDF 2026 - Engenharia Mecânica")
+st.caption("UDF 2026 - Engenharia Mecânica | Suporte à Análise Exergética")
