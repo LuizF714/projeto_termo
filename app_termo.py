@@ -33,12 +33,17 @@ def interpolar_lagrange(df, coluna_busca, valor_alvo):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Termo Lagrange - UDF", layout="wide")
+
+# SELETOR DE UNIDADE GLOBAL NA BARRA LATERAL
+st.sidebar.header("⚙️ Configurações de Unidade")
+unidade_p = st.sidebar.radio("Unidade de Pressão:", ["bar", "Pa (Pascal)"])
+
 st.title("🚀 Assistente de Tabelas Termodinâmicas")
-st.markdown("**Estudante:** Luiz Felipe | **Instituição:** UDF | Suporte à Análise Exergética")
+st.markdown(f"**Estudante:** Luiz Felipe | **Instituição:** UDF | Unidade Atual: **{unidade_p}**")
 
 tab1, tab2 = st.tabs(["📊 Consulta Geral (1 Variável)", "🔄 Busca Cruzada (2 Variáveis)"])
 
-# --- ABA 1: MANTIDA CONFORME VOCÊ GOSTA ---
+# --- ABA 1: CONSULTA ORIGINAL ---
 with tab1:
     st.header("Modo de Busca Original")
     tabela_sel = st.selectbox("Selecione a Tabela:", 
@@ -51,23 +56,41 @@ with tab1:
         df.columns = df.columns.str.strip()
 
         if t_id in ["A4", "A5"]:
-            pressoes = sorted(df['p (bar)'].unique())
-            p_alvo = st.selectbox("Selecione a Pressão fixa (bar):", pressoes, key="p1")
+            pressoes_bar = sorted(df['p (bar)'].unique())
+            # Se for Pa, converte a lista para o usuário ver
+            if unidade_p == "Pa (Pascal)":
+                pressoes_exibicao = [p * 100000 for p in pressoes_bar]
+                p_escolhida = st.selectbox("Selecione a Pressão fixa (Pa):", pressoes_exibicao, key="p1")
+                p_alvo = p_escolhida / 100000 # Converte de volta para bar para filtrar o CSV
+            else:
+                p_alvo = st.selectbox("Selecione a Pressão fixa (bar):", pressoes_bar, key="p1")
+            
             df = df[df['p (bar)'] == p_alvo]
         
         col_busca = st.selectbox("Buscar por qual variável?", df.columns, key="c1")
-        valor = st.number_input(f"Insira o valor de {col_busca}:", format="%.4f", key="v1")
         
+        # Ajuste de label se a coluna for pressão e a unidade for Pa
+        label_input = f"Insira o valor de {col_busca}"
+        if "p (bar)" in col_busca and unidade_p == "Pa (Pascal)":
+            label_input += " (em Pa)"
+            
+        valor = st.number_input(label_input, format="%.4f", key="v1")
+        
+        # Converte o valor de entrada se for pressão em Pa
+        valor_calculo = (valor / 100000) if ("p (bar)" in col_busca and unidade_p == "Pa (Pascal)") else valor
+
         if st.button("Interpolar Dados", key="b1"):
-            res = interpolar_lagrange(df, col_busca, valor)
+            res = interpolar_lagrange(df, col_busca, valor_calculo)
+            # Converte a coluna de pressão no resultado final para Pa se necessário
+            if unidade_p == "Pa (Pascal)" and "p (bar)" in res.columns:
+                res["p (Pa)"] = res["p (bar)"] * 100000
             st.dataframe(res)
+
     except: st.error("Erro ao carregar arquivo.")
 
-# --- ABA 2: O NOVO MODO MULTI-VARIÁVEL ---
+# --- ABA 2: BUSCA CRUZADA ---
 with tab2:
     st.header("Identificação de Estado por Par de Propriedades")
-    st.write("Escolha a tabela e entre com duas informações (ex: Pressão e Entalpia).")
-    
     tabela_sel_2 = st.selectbox("Selecione a Tabela de Busca:", 
                                 ["A2 - Água Saturada", "A3 - Água Saturada", 
                                  "A4 - Vapor Superaquecido", "A5 - Líquida Comprimida"], key="t2")
@@ -77,37 +100,45 @@ with tab2:
         df2 = pd.read_csv(f"{t_id_2}.csv", sep=';', decimal=',', engine='python')
         df2.columns = df2.columns.str.strip()
         
-        # Primeira Variável (Se for A4/A5, sugerimos a Pressão primeiro por ser o padrão das tabelas)
         c1, c2 = st.columns(2)
         with c1:
-            if t_id_2 in ["A4", "A5"]:
-                pressoes2 = sorted(df2['p (bar)'].unique())
-                v1_nome = "p (bar)"
-                v1_valor = st.selectbox("1ª Propriedade: Selecione a Pressão (bar):", pressoes2, key="p2")
-            else:
-                v1_nome = st.selectbox("1ª Propriedade (Base):", df2.columns, key="c2_aba2")
-                v1_valor = st.number_input(f"Valor da 1ª propriedade ({v1_nome}):", format="%.4f", key="v1_aba2")
+            v1_nome = st.selectbox("1ª Propriedade (Base):", df2.columns, key="c2_aba2")
+            # Tratamento de Pressão em Pa
+            label_v1 = f"Valor de {v1_nome}"
+            if "p (bar)" in v1_nome and unidade_p == "Pa (Pascal)":
+                label_v1 += " (em Pa)"
+            
+            v1_valor = st.number_input(label_v1, format="%.4f", key="v1_aba2")
+            v1_calculo = (v1_valor / 100000) if ("p (bar)" in v1_nome and unidade_p == "Pa (Pascal)") else v1_valor
 
-        # Segunda Variável
         with c2:
             colunas_restantes = [col for col in df2.columns if col != v1_nome]
             v2_nome = st.selectbox("2ª Propriedade (Para Interpolar):", colunas_restantes, key="c3_aba2")
-            v2_valor = st.number_input(f"Valor da 2ª propriedade ({v2_nome}):", format="%.4f", key="v2_aba2")
+            label_v2 = f"Valor de {v2_nome}"
+            if "p (bar)" in v2_nome and unidade_p == "Pa (Pascal)":
+                label_v2 += " (em Pa)"
+                
+            v2_valor = st.number_input(label_v2, format="%.4f", key="v2_aba2")
+            v2_calculo = (v2_valor / 100000) if ("p (bar)" in v2_nome and unidade_p == "Pa (Pascal)") else v2_valor
             
         if st.button("Encontrar Estado Completo", key="b3"):
-            # Filtra pela primeira propriedade
-            bloco_final = df2[df2[v1_nome] == v1_valor]
+            bloco_final = df2[df2[v1_nome] == v1_calculo]
             
             if bloco_final.empty:
-                # Se não for valor exato (comum em A2/A3), interpola primeiro a base
-                res_temp = interpolar_lagrange(df2, v1_nome, v1_valor)
-                st.warning("Nota: A 1ª propriedade foi interpolada para gerar a base de busca.")
-                st.dataframe(res_temp)
+                res2 = interpolar_lagrange(df2, v1_nome, v1_calculo) # Interpola a primeira se não for valor exato
+                if res2 is not None:
+                    # Agora interpola a segunda variável dentro do resultado da primeira
+                    res_final = interpolar_lagrange(res2, v2_nome, v2_calculo)
+                else: res_final = None
             else:
-                # Interpola a segunda propriedade dentro do bloco da primeira
-                res2 = interpolar_lagrange(bloco_final, v2_nome, v2_valor)
-                st.success(f"Resultado encontrado para {v1_nome}={v1_valor} e {v2_nome}={v2_valor}")
-                st.dataframe(res2)
+                res_final = interpolar_lagrange(bloco_final, v2_nome, v2_calculo)
+
+            if res_final is not None:
+                if unidade_p == "Pa (Pascal)" and "p (bar)" in res_final.columns:
+                    res_final["p (Pa)"] = res_final["p (bar)"] * 100000
+                st.dataframe(res_final)
+            else:
+                st.error("Não foi possível interpolar com esses valores.")
                 
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
